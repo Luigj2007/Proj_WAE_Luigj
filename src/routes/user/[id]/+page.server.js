@@ -1,10 +1,19 @@
 import pool from '$lib/server/db';
-import { redirect } from '@sveltejs/kit';
+import { error, redirect } from '@sveltejs/kit';
 
-export async function load({ locals }) {
+export const load = async ({ locals, params }) => {
 	const connection = await pool.getConnection();
 
 	try {
+		const [users] = await connection.execute(
+			'SELECT id, username, role, created_at FROM users WHERE id = ?',
+			[params.id]
+		);
+
+		if (users.length === 0) {
+			throw error(404, 'User not found');
+		}
+
 		const [images] = await connection.execute(
 			`SELECT
 				i.id,
@@ -20,20 +29,21 @@ export async function load({ locals }) {
 				) AS viewer_voted
 			 FROM images i
 			 INNER JOIN users u ON u.id = i.author_id
-			 ORDER BY vote_count DESC, i.id DESC
-			 LIMIT 25`
-			,
-			[locals.user?.id ?? null]
+			 WHERE i.author_id = ?
+			 ORDER BY i.id DESC`,
+			[locals.user?.id ?? null, params.id]
 		);
 
 		return {
+			profileUser: users[0],
 			images,
-			user: locals.user ?? null
+			viewer: locals.user ?? null,
+			isOwner: Boolean(locals.user && String(locals.user.id) === params.id)
 		};
 	} finally {
 		connection.release();
 	}
-}
+};
 
 export const actions = {
 	upvoteImage: async ({ request, locals }) => {
@@ -56,6 +66,8 @@ export const actions = {
 				[id, locals.user.id]
 			);
 
+			let voted = false;
+
 			if (existingVotes.length > 0) {
 				await connection.execute('DELETE FROM votes WHERE image_id = ? AND user_id = ?', [id, locals.user.id]);
 				await connection.execute('UPDATE images SET votes = GREATEST(votes - 1, 0) WHERE id = ?', [id]);
@@ -65,9 +77,44 @@ export const actions = {
 					locals.user.id
 				]);
 				await connection.execute('UPDATE images SET votes = votes + 1 WHERE id = ?', [id]);
+				voted = true;
 			}
 
-			throw redirect(303, request.headers.get('referer') || '/');
+			const [voteRows] = await connection.execute(
+				'SELECT votes FROM images WHERE id = ?',
+				[id]
+			);
+
+			const voteCount = voteRows[0]?.votes ?? 0;
+
+			return {
+				success: true,
+				imageId: Number(id),
+				votes: voteCount,
+				voted
+			};
+		} finally {
+			connection.release();
+		}
+	},
+	deleteImage: async ({ request, locals, params }) => {
+		if (!locals.user) {
+			throw redirect(302, '/login');
+		}
+
+		if (String(locals.user.id) !== params.id) {
+			throw redirect(302, `/user/${locals.user.id}`);
+		}
+
+		const formData = await request.formData();
+		const id = formData.get('id');
+		const connection = await pool.getConnection();
+
+		try {
+			await connection.execute('DELETE FROM images WHERE id = ? AND author_id = ?', [
+				id,
+				locals.user.id
+			]);
 		} finally {
 			connection.release();
 		}
