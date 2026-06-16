@@ -2,26 +2,27 @@ import { login } from '$lib/server/auth';
 import { redirect } from '@sveltejs/kit';
 
 export const actions = {
-	// Login form action
 	login: async ({ request, cookies }) => {
+		// Read the submitted credentials from the login form.
 		const formData = await request.formData();
-		const username = formData.get('username'); // Get username from form
-		const password = formData.get('password'); // Get password from form
+		const username = formData.get('username');
+		const password = formData.get('password');
 
-		const result = await login(username, password); // Try to log in
+		// Ask the auth helper to validate the credentials.
+		const result = await login(username, password);
 
 		if (result?.token) {
-			// Set session cookie if login successful
+			// Store the session token in an HTTP-only cookie.
 			cookies.set('session', result.token, {
-				maxAge: 60 * 60 * 24 * 7, // 1 week
+				maxAge: 60 * 60 * 24 * 7,
 				path: '/',
 				httpOnly: true,
 				sameSite: 'strict'
 			});
 
-			throw redirect(302, `/user/${result.user.id}`); // Redirect to user page
+			throw redirect(302, `/user/${result.user.id}`);
 		} else {
-			// Return failure message
+			// Show a simple error message on failed login.
 			return {
 				success: false,
 				message: 'Login failed'
