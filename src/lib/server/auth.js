@@ -5,26 +5,26 @@ export let login = async (username, password) => {
 	let connection = await pool.getConnection();
 
 	try {
-		// Find user with username
+		// Find the user record for the submitted username.
 		let [users] = await connection.query('SELECT * FROM users WHERE username = ?', [username]);
 
 		if (users.length === 0) {
 			return null;
 		}
 
-		// Check password
+		// Compare the submitted password with the stored hash.
 		if (!(await bcrypt.compare(password, users[0].password_hash))) {
 			return null;
 		}
 
-		// Create token
+		// Generate a new session token for this login.
 		const token = crypto.randomUUID();
 
-		// Create expiration date (1 week)
+		// Expire the session after one week.
 		let expires = new Date();
 		expires.setDate(expires.getDate() + 7);
 
-		// Save token
+		// Persist the session token on the user row.
 		let [result] = await connection.execute(
 			'UPDATE users SET session_token = ?, session_expiration = ? WHERE id = ?',
 			[token, expires, users[0].id]
@@ -33,7 +33,7 @@ export let login = async (username, password) => {
 			return null;
 		}
 
-		// Return session and user data
+		// Return the token and the public user data.
 		return {
 			token,
 			user: {
@@ -52,32 +52,32 @@ export let register = async (username, password) => {
 	let hashedPassword = await hashPassword(password);
 
 	try {
-		// Check if username is already in use
+		// Prevent duplicate usernames.
 		let [users] = await connection.query('SELECT * FROM users WHERE username = ?', [username]);
 		if (users.length > 0) {
 			return { token: null, message: 'Username already in use' };
 		}
 
-		// Create user
+		// Create the new user with a hashed password.
 		let [result] = await connection.execute(
 			'INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)',
 			[username, hashedPassword, 'user']
 		);
 
-		// Create token
+		// Generate a session token so the new user is logged in.
 		const token = crypto.randomUUID();
 
-		// Create expiration date (1 week)
+		// Expire the new session after one week.
 		let expires = new Date();
 		expires.setDate(expires.getDate() + 7);
 
-		// Save token
+		// Store the session details on the new user row.
 		await connection.query(
 			'UPDATE users SET session_token = ?, session_expiration = ? WHERE id = ?',
 			[token, expires, result.insertId]
 		);
 
-		// Return token and created user
+		// Return the token and the created user data.
 		return {
 			token,
 			user: {
@@ -92,6 +92,7 @@ export let register = async (username, password) => {
 	}
 };
 
+// Hash passwords before they are stored in the database.
 let hashPassword = async (password) => {
 	return await bcrypt.hash(password, 12);
 };
