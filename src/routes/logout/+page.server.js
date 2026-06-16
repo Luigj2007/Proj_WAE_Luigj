@@ -2,23 +2,22 @@ import pool from '$lib/server/db';
 import { redirect } from '@sveltejs/kit';
 
 export const actions = {
-	// Logout action
 	logout: async ({ locals, cookies }) => {
+		// Send guests back home because there is no session to clear.
 		if (!locals.user) {
-			redirect(302, '/'); // Redirect if no user is logged in
+			redirect(302, '/');
 		}
 
-		// Clear session info from database
+		// Remove the stored session token from the database.
 		let connection = await pool.getConnection();
 		await connection.execute(
 			'UPDATE users SET session_token = NULL, session_expiration = NULL WHERE id = ?',
 			[locals.user.id]
 		);
 
-		// Remove session cookie
+		// Remove the browser session cookie.
 		cookies.delete('session', { path: '/' });
 
-		// Redirect to home page
 		redirect(302, '/');
 	}
 };
