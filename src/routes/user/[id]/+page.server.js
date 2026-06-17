@@ -2,6 +2,7 @@ import pool from '$lib/server/db';
 import { error, redirect } from '@sveltejs/kit';
 
 export const load = async ({ locals, params }) => {
+	// Load the requested profile and all images for that user.
 	const connection = await pool.getConnection();
 
 	try {
@@ -47,6 +48,7 @@ export const load = async ({ locals, params }) => {
 
 export const actions = {
 	upvoteImage: async ({ request, locals }) => {
+		// Guests must log in before voting.
 		if (!locals.user) {
 			throw redirect(302, '/login');
 		}
@@ -61,6 +63,7 @@ export const actions = {
 		const connection = await pool.getConnection();
 
 		try {
+			// Toggle the viewer vote and keep the cached vote count in sync.
 			const [existingVotes] = await connection.execute(
 				'SELECT id FROM votes WHERE image_id = ? AND user_id = ?',
 				[id, locals.user.id]
@@ -69,8 +72,13 @@ export const actions = {
 			let voted = false;
 
 			if (existingVotes.length > 0) {
-				await connection.execute('DELETE FROM votes WHERE image_id = ? AND user_id = ?', [id, locals.user.id]);
-				await connection.execute('UPDATE images SET votes = GREATEST(votes - 1, 0) WHERE id = ?', [id]);
+				await connection.execute('DELETE FROM votes WHERE image_id = ? AND user_id = ?', [
+					id,
+					locals.user.id
+				]);
+				await connection.execute('UPDATE images SET votes = GREATEST(votes - 1, 0) WHERE id = ?', [
+					id
+				]);
 			} else {
 				await connection.execute('INSERT INTO votes (image_id, user_id) VALUES (?, ?)', [
 					id,
@@ -80,11 +88,7 @@ export const actions = {
 				voted = true;
 			}
 
-			const [voteRows] = await connection.execute(
-				'SELECT votes FROM images WHERE id = ?',
-				[id]
-			);
-
+			const [voteRows] = await connection.execute('SELECT votes FROM images WHERE id = ?', [id]);
 			const voteCount = voteRows[0]?.votes ?? 0;
 
 			return {
@@ -98,6 +102,7 @@ export const actions = {
 		}
 	},
 	deleteImage: async ({ request, locals, params }) => {
+		// Only logged-in owners can delete their images.
 		if (!locals.user) {
 			throw redirect(302, '/login');
 		}
@@ -111,6 +116,7 @@ export const actions = {
 		const connection = await pool.getConnection();
 
 		try {
+			// Delete the image only when it belongs to the current owner.
 			await connection.execute('DELETE FROM images WHERE id = ? AND author_id = ?', [
 				id,
 				locals.user.id
