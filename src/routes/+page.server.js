@@ -2,6 +2,7 @@ import pool from '$lib/server/db';
 import { redirect } from '@sveltejs/kit';
 
 export async function load({ locals }) {
+	// Load the most liked images for the public homepage.
 	const connection = await pool.getConnection();
 
 	try {
@@ -19,10 +20,9 @@ export async function load({ locals }) {
 					WHERE viewer_vote.image_id = i.id AND viewer_vote.user_id = ?
 				) AS viewer_voted
 			 FROM images i
-			 INNER JOIN users u ON u.id = i.author_id
+			 JOIN users u ON u.id = i.author_id
 			 ORDER BY vote_count DESC, i.id DESC
-			 LIMIT 25`
-			,
+			 LIMIT 25`,
 			[locals.user?.id ?? null]
 		);
 
@@ -37,6 +37,7 @@ export async function load({ locals }) {
 
 export const actions = {
 	upvoteImage: async ({ request, locals }) => {
+		// Guests must log in before they can vote.
 		if (!locals.user) {
 			throw redirect(302, '/login');
 		}
@@ -51,14 +52,20 @@ export const actions = {
 		const connection = await pool.getConnection();
 
 		try {
+			// Toggle an existing vote off, or add a new one.
 			const [existingVotes] = await connection.execute(
 				'SELECT id FROM votes WHERE image_id = ? AND user_id = ?',
 				[id, locals.user.id]
 			);
 
 			if (existingVotes.length > 0) {
-				await connection.execute('DELETE FROM votes WHERE image_id = ? AND user_id = ?', [id, locals.user.id]);
-				await connection.execute('UPDATE images SET votes = GREATEST(votes - 1, 0) WHERE id = ?', [id]);
+				await connection.execute('DELETE FROM votes WHERE image_id = ? AND user_id = ?', [
+					id,
+					locals.user.id
+				]);
+				await connection.execute('UPDATE images SET votes = GREATEST(votes - 1, 0) WHERE id = ?', [
+					id
+				]);
 			} else {
 				await connection.execute('INSERT INTO votes (image_id, user_id) VALUES (?, ?)', [
 					id,
